@@ -352,6 +352,8 @@ public:
     void addController(SDL_JoystickID id, const std::string& guid, const std::string& name);
     void removeController(SDL_JoystickID id);
 
+    const LLGameControl::Device* getLastActiveDevice() const;
+
     void onAxis(SDL_JoystickID id, U8 axis, S16 value);
     void onButton(SDL_JoystickID id, U8 button, bool pressed);
 
@@ -405,6 +407,7 @@ private:
     U32 mButtonAccumulator { 0 };
     U32 mLastActiveFlags { 0 };
     U32 mLastFlycamActionFlags { 0 };
+    SDL_JoystickID mlastActiveControllerID { 0 };
 
     friend class LLGameControl;
 };
@@ -601,6 +604,42 @@ U8 LLGameControl::Options::mapButton(U8 button) const
         return button;
     }
     return mButtonMap[button];
+}
+
+U8 LLGameControl::Options::unmapAxis(U8 axis) const
+{
+    if (axis >= NUM_AXES)
+    {
+        LL_WARNS("SDL3") << "Invalid unmap axis: " << axis << LL_ENDL;
+        return axis;
+    }
+    for(size_t i=0; i < mAxisMap.size(); i++)
+    {
+        if(mAxisMap[i] == axis)
+        {
+            return (U8)i;
+        }
+    }
+    return axis;
+}
+
+U8 LLGameControl::Options::unmapButton(U8 button) const
+{
+
+    if (button >= NUM_BUTTONS)
+    {
+        LL_WARNS("SDL3") << "Invalid unmap button: " << button << LL_ENDL;
+        return button;
+    }
+
+    for(size_t i=0; i < mButtonMap.size(); i++)
+    {
+        if(mButtonMap[i] == button)
+        {
+            return (U8)i;
+        }
+    }
+    return button;
 }
 
 S16 LLGameControl::Options::fixAxisValue(U8 axis, S16 value) const
@@ -977,6 +1016,29 @@ void LLGameControllerManager::removeController(SDL_JoystickID id)
         });
 }
 
+const LLGameControl::Device* LLGameControllerManager::getLastActiveDevice() const
+{
+    if (mDevices.empty())
+    {
+        return nullptr;
+    }
+
+    if (mlastActiveControllerID != 0)
+    {
+        auto it = std::find_if(mDevices.begin(), mDevices.end(),
+            [this](const LLGameControl::Device& device)
+            {
+                return device.getJoystickID() == mlastActiveControllerID;
+            });
+        if (it != mDevices.end())
+        {
+            return &(*it);
+        }
+    }
+
+    return &mDevices.front();
+}
+
 void LLGameControllerManager::onAxis(SDL_JoystickID id, U8 axis, S16 value)
 {
     device_it it = findDevice(id);
@@ -1053,6 +1115,8 @@ void LLGameControllerManager::onButton(SDL_JoystickID id, U8 button, bool presse
             << " button i=" << (S32)button << LL_ENDL;
         return;
     }
+
+    mlastActiveControllerID = id;
 
     // Map button using device-specific settings
     // or leave the value unchanged
@@ -2162,3 +2226,74 @@ void LLGameControl::setDeviceOptions(const std::string& guid, const Options& opt
 {
     g_manager.setDeviceOptions(guid, options);
 }
+
+static bool mapLocalStringToTypeAndIndex(const std::string control, LLGameControl::InputChannel::Type& cType, U8& cIndex)
+{
+    // HACK: needs proper method to map strings to Input Types and Indexes
+    for(U8 i = 0;i < 8;i++)
+    {
+        if(control == ("AXIS_" + std::to_string((U32)i)))
+        {
+            cIndex = i;
+            cType = LLGameControl::InputChannel::Type::TYPE_AXIS;
+            return true;
+        }
+    }
+
+    for(U8 i = 0;i < 32;i++)
+    {
+        if(control == ("BUTTON_" + std::to_string((U32)i)))
+        {
+            cIndex = i;
+            cType = LLGameControl::InputChannel::Type::TYPE_BUTTON;
+            return true;
+        }
+    }
+    // /HACK
+    return false;
+}
+
+// LLGameControllerBindingToStringHandler implementation
+std::string LLGameControl::getBindingAsString(const std::string& control) const
+{
+    if(!hasHandlingDevice()) {
+        return std::string();
+    }
+
+    InputChannel::Type cType = InputChannel::Type::TYPE_NONE;
+    U8 cIndex = 255;
+    if(!mapLocalStringToTypeAndIndex(control, cType, cIndex))
+    {
+        return std::string();
+    }
+
+    if(cType == InputChannel::Type::TYPE_NONE)
+    {
+        return std::string();
+    }
+
+    const LLGameControl::Device* device = g_manager.getLastActiveDevice();
+
+    if(!device)
+    {
+        return std::string();
+    }
+
+    if(cType == InputChannel::Type::TYPE_AXIS)
+    {
+        U8 axis = device->getOptions().unmapAxis(cIndex);
+        return "AXIS_" + std::to_string((U32)axis);
+    }
+    else
+    {
+        U8 button = device->getOptions().unmapButton(cIndex);
+        return "BUTTON_" + std::to_string((U32)button);
+    }
+}
+
+// virtual, from LLGameControllerBindingToStringHandler
+bool LLGameControl::hasHandlingDevice() const
+{
+    return g_enabled && !g_manager.mDevices.empty();
+}
+
