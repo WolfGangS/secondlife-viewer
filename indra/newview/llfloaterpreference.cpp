@@ -254,7 +254,7 @@ void fractionFromDecimal(F32 decimal_val, S32& numerator, S32& denominator)
     }
 }
 
-// handle secondlife:///app/worldmap/{NAME}/{COORDS} URLs
+// handle secondlife:///app/keybinding/{control} URLs
 // Also see LLUrlEntryKeybinding, the value of this command type
 // is ability to show up to date value in chat
 class LLKeybindingHandler: public LLCommandHandler
@@ -288,6 +288,41 @@ public:
     }
 };
 LLKeybindingHandler gKeybindHandler;
+
+// handle secondlife:///app/gamecontroller/{control} URLs
+// Also see LLUrlEntryGameController, the value of this command type
+// is ability to show up to date value in chat
+class LLGameControllerHandler: public LLCommandHandler
+{
+public:
+    // requires trusted browser to trigger
+    LLGameControllerHandler(): LLCommandHandler("gamecontroller", UNTRUSTED_CLICK_ONLY)
+    {
+    }
+
+    bool handle(const LLSD& params, const LLSD& query_map,
+                const std::string& grid, LLMediaCtrl* web)
+    {
+        if (params.size() < 1) return false;
+
+        LLFloaterPreference* prefsfloater = dynamic_cast<LLFloaterPreference*>
+            (LLFloaterReg::showInstance("preferences"));
+
+        if (prefsfloater)
+        {
+            // find 'controls' panel and bring it the front
+            LLTabContainer* tabcontainer = prefsfloater->getChild<LLTabContainer>("pref core");
+            LLPanel* panel = prefsfloater->getChild<LLPanel>("game_control");
+            if (tabcontainer && panel)
+            {
+                tabcontainer->selectTabPanel(panel);
+            }
+        }
+
+        return true;
+    }
+};
+LLGameControllerHandler gGameControllerHandler;
 
 
 //////////////////////////////////////////////

@@ -4615,6 +4615,7 @@ void LLAppViewer::loadKeyBindings()
         }
     }
     LLUrlRegistry::instance().setKeybindingHandler(&gViewerInput);
+    LLUrlRegistry::instance().setGameControllerHandler(LLGameControl::getInstance());
 }
 
 // As per GHI #4498, remove old, stale CEF cache folders from previous sessions
